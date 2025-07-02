@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <title>GREEN-API Demo</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      display: flex;
+    }
+    .left {
+      flex: 1;
+    }
+    .right {
+      flex: 1;
+      background: #fafafa;
+      padding: 10px;
+      margin-left: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input, textarea, button {
+      width: 100%;
+      margin: 5px 0;
+      box-sizing: border-box;
+      padding: 8px;
+      font-size: 14px;
+    }
+    textarea {
+      height: 100px;
+      resize: vertical;
+    }
+    button {
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="left">
+    <!-- Параметры подключения -->
+    <label for="idInstance">ID инстанса</label>
+    <input type="text" id="idInstance" placeholder="idInstance"/>
+
+    <label for="apiToken">API-токен инстанса</label>
+    <input type="text" id="apiToken" placeholder="ApiTokenInstance"/>
+
+    <!-- getSettings -->
+    <button id="btnGetSettings">getSettings</button>
+
+    <!-- getStateInstance -->
+    <button id="btnGetStateInstance">getStateInstance</button>
+
+    <!-- sendMessage -->
+    <label for="chatId">Chat ID (для текста)</label>
+    <input type="text" id="chatId" placeholder="77771234567"/>
+
+    <label for="message">Текст сообщения</label>
+    <textarea id="message" placeholder="Hello Ася!"></textarea>
+
+    <button id="btnSendMessage">sendMessage</button>
+
+    <!-- sendFileByUrl -->
+    <label for="chatIdFile">Chat ID (для файла)</label>
+    <input type="text" id="chatIdFile" placeholder="77771234567"/>
+
+    <label for="fileUrl">URL файла</label>
+    <input type="text" id="fileUrl" placeholder="https://my.site.com/img/horse.png"/>
+
+    <button id="btnSendFileByUrl">sendFileByUrl</button>
+  </div>
+
+  <div class="right">
+    <label for="response">Ответ от API</label>
+    <pre id="response"></pre>
+  </div>
+
+  <script>
+    // Базовый URL вашего бэкенда
+    const API_BASE = 'http://localhost:3000/api';
+
+    /**
+     * Нормализует номер телефона в JID (<номер>@c.us или <номер>@g.us)
+     * @param {string} raw 
+     * @returns {string}
+     * @throws {Error} если вход пустой
+     */
+    function normalizeChatId(raw) {
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) {
+        throw new Error('Поле chatId не может быть пустым');
+      }
+      if (trimmed.endsWith('@c.us') || trimmed.endsWith('@g.us')) {
+        return trimmed;
+      }
+      return trimmed + '@c.us';
+    }
+
+    /**
+     * Отправляет POST-запрос и выводит результат в <pre id="response">
+     * @param {string} endpoint — имя метода (getSettings, sendMessage и т.п.)
+     * @param {Object} body — тело запроса
+     */
+    async function sendRequest(endpoint, body) {
+      const responseElement = document.getElementById('response');
+      try {
+        const response = await fetch(`${API_BASE}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (response.ok) {
+          responseElement.textContent = JSON.stringify(data, null, 2);
+        } else {
+          responseElement.textContent =
+            'Ошибка ' + response.status + ':\n' + JSON.stringify(data, null, 2);
+        }
+      } catch (networkError) {
+        responseElement.textContent =
+          'Сетевая ошибка:\n' + networkError.message;
+      }
+    }
+
+    /**
+     * Обработчики для каждой кнопки
+     */
+    async function handleGetSettings() {
+      const idInstance = document.getElementById('idInstance').value.trim();
+      const apiToken   = document.getElementById('apiToken').value.trim();
+      await sendRequest('getSettings', { idInstance, apiToken });
+    }
+
+    async function handleGetStateInstance() {
+      const idInstance = document.getElementById('idInstance').value.trim();
+      const apiToken   = document.getElementById('apiToken').value.trim();
+      await sendRequest('getStateInstance', { idInstance, apiToken });
+    }
+
+    async function handleSendMessage() {
+      const idInstance = document.getElementById('idInstance').value.trim();
+      const apiToken   = document.getElementById('apiToken').value.trim();
+      const rawChatId  = document.getElementById('chatId').value;
+      const message    = document.getElementById('message').value;
+      let chatId;
+      try {
+        chatId = normalizeChatId(rawChatId);
+      } catch (err) {
+        document.getElementById('response').textContent = err.message;
+        return;
+      }
+      await sendRequest('sendMessage', {
+        idInstance,
+        apiToken,
+        chatId,
+        message
+      });
+    }
+
+    async function handleSendFileByUrl() {
+      const idInstance = document.getElementById('idInstance').value.trim();
+      const apiToken   = document.getElementById('apiToken').value.trim();
+      const rawChatId  = document.getElementById('chatIdFile').value;
+      const rawUrl     = document.getElementById('fileUrl').value.trim();
+      let chatId;
+      try {
+        chatId = normalizeChatId(rawChatId);
+      } catch (err) {
+        document.getElementById('response').textContent = err.message;
+        return;
+      }
+      if (!rawUrl) {
+        document.getElementById('response').textContent =
+          'Поле URL файла не может быть пустым';
+        return;
+      }
+      // Извлекаем имя файла из URL (часть после последнего '/')
+      const parts = rawUrl.split('/');
+      const fileName = parts[parts.length - 1] || 'file';
+
+      await sendRequest('sendFileByUrl', {
+        idInstance,
+        apiToken,
+        chatId,
+        urlFile: rawUrl,
+        fileName
+      });
+    }
+
+    /**
+     * Навешиваем обработчики клика после загрузки страницы
+     */
+    window.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('btnGetSettings')
+        .addEventListener('click', handleGetSettings);
+      document.getElementById('btnGetStateInstance')
+        .addEventListener('click', handleGetStateInstance);
+      document.getElementById('btnSendMessage')
+        .addEventListener('click', handleSendMessage);
+      document.getElementById('btnSendFileByUrl')
+        .addEventListener('click', handleSendFileByUrl);
+    });
+  </script>
+</body>
+</html>
